@@ -1,0 +1,59 @@
+{
+  "title": "Tactical Breach",
+  "language": [
+    "en"
+  ],
+  "hook": "Clear targets in concrete ruins",
+  "game_overview": "Engage tactical targets inside a dark concrete warehouse. Master weapon recoil and precision aim in this tense first-person shooter.",
+  "artstyle": "low-poly",
+  "genre": "shooting",
+  "winning_condition": "Neutralize all tactical training targets with accurate shots to clear the warehouse sector.",
+  "losing_condition": "Run out of reserve ammunition before neutralizing all active tactical targets in the zone.",
+  "player_mode": "single_player",
+  "supported_orientations": [
+    "landscape"
+  ],
+  "input_methods": [
+    "mouse",
+    "keyboard",
+    "touch"
+  ],
+  "score_options": {
+    "score_type": "points",
+    "score_order": "higher_is_better"
+  },
+  "low_end_device_support": false,
+  "mobile_playable": true,
+  "content_descriptors": [
+    "violence"
+  ],
+  "controls": [
+    {
+      "input": "Left Mouse Click / Tap Fire / Gamepad RT or A",
+      "action": "Fire weapon, triggering muzzle flash, recoil impulse, and raycast hit detection."
+    },
+    {
+      "input": "Mouse Movement / Touch Drag Look / Gamepad Right Stick",
+      "action": "First-person camera look and targeting orientation."
+    },
+    {
+      "input": "W/A/S/D / Virtual D-Pad / Gamepad Left Stick",
+      "action": "Move operative forward, left, backward, and right through the facility."
+    },
+    {
+      "input": "R Key / Reload Button / Gamepad X",
+      "action": "Reload weapon magazine when ammunition is depleted."
+    },
+    {
+      "input": "Escape / Menu Button / Gamepad Start",
+      "action": "Toggle tactical pause menu."
+    }
+  ],
+  "sections": [
+    {
+      "title": "User Interface & Experience",
+      "content": "Updated the debug HUD overlay in App.tsx so the game launches cleanly with pure AAA tactical UI/HUD with showDebugPanel defaulted to false. A global keydown listener allows toggling the Technical Art Debug & Performance Profiler anytime using F3 or backtick (`). Styled in matching tactical black (rgba(10, 12, 14, 0.95)) and 1px borders with JetBrains Mono tabular telemetry, displaying live soldier and asset loading statuses, mesh/bone metrics, world positioning, active animation state, and interactive animation switchers. Added a subtle [F3] TA DEBUGGER hint in the bottom-right corner of the Start screen.",
+      "summary": "Clean launch UI with toggleable Technical Art Debugger & Profiler (F3 / `)."
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+release/
+*.zip
+.DS_Store
+*.log
+agent_injected.d.ts
+playground_config.json
