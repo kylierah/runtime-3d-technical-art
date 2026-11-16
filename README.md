@@ -1,4 +1,4 @@
-# Tactical Breach — WebGL / Three.js 3D FPS & Technical Art Pipeline
+# Tactical Breach — WebGL / Three.js 3D FPS Game Technical Art Pipeline
 
 상용 게임 엔진(Unity/Unreal) 없이 **Three.js(WebGL)와 Rapier 물리 엔진**만으로 구축한 3D 택티컬 FPS 프로토타입입니다.  
 생성형 3D AI(**SAM 3D**)와 Google Labs Playground를 활용한 AI 기반 게임 프로토타이핑 및 개발, 생성형 에셋의 비규격·재질 오류와 애니메이션·VFX를 코드 기반 **테크니컬 아트(TA) 파이프라인**으로 제어하여 실시간 60FPS 구동과 Windows 단독 실행 파일(`.exe`) 패키징까지 완료했습니다.
