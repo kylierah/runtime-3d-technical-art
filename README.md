@@ -1,7 +1,10 @@
 # Tactical Breach — WebGL / Three.js 3D FPS & Technical Art Pipeline
 
 상용 게임 엔진(Unity/Unreal) 없이 **Three.js(WebGL)와 Rapier 물리 엔진**만으로 구축한 3D 택티컬 FPS 프로토타입입니다.  
-생성형 3D AI(**SAM 3D**)와 AI 코딩 워크플로우를 활용해 1인 프로토타이핑 속도를 극대화하고, 생성형 에셋의 비규격·재질 오류와 애니메이션·VFX를 코드 기반 **테크니컬 아트(TA) 파이프라인**으로 제어하여 실시간 60FPS 구동과 Windows 단독 실행 파일(`.exe`) 패키징까지 완주했습니다.
+생성형 3D AI(**SAM 3D**)와 Google Labs Playground를 활용한 AI 기반 게임 프로토타이핑 및 개발, 생성형 에셋의 비규격·재질 오류와 애니메이션·VFX를 코드 기반 **테크니컬 아트(TA) 파이프라인**으로 제어하여 실시간 60FPS 구동과 Windows 단독 실행 파일(`.exe`) 패키징까지 완료했습니다.
+
+<img width="2240" height="1125" alt="Tactical Breach" src="https://github.com/user-attachments/assets/df7dedf3-fcaa-41db-ada6-d84188a19919" />
+
 
 ---
 
@@ -22,7 +25,6 @@ AI로 생성한 3D 에셋(군용 트럭 등)과 외부 캐릭터 모델은 스�
 - **PBR 재질 클램핑 (Material Clamping):** 생성형 에셋의 과도한 `metalness`나 렌더링 누락을 방지하기 위해 `metalness <= 0.35`, `roughness >= 0.45`, `depthWrite = true`, `DoubleSide`로 일괄 정규화.
 - **Draco 압축 디코딩:** 웹 환경의 에셋 로딩 병목을 줄이기 위해 `DRACOLoader` 파이프라인 연동.
 
-> **[여기에 SAM 3D 원본 에셋 vs 엔진 정규화 적용 후 Before/After 스크린샷 첨부]**
 
 ### 2. 스켈레톤 리타겟팅, 실시간 본 소켓 및 중력 낙하 보정
 - **다중 GLB 애니메이션 병합 (`cleanAndRetargetClip`):** 기본 캐릭터 메시(`hjuano.glb`)와 분리된 사격(`r4mabm.glb`)·피격(`vh455p.glb`) 애니메이션 클립을 런타임에 결합하며, 본 비율 왜곡을 일으키는 `.position` / `.scale` 트랙을 제거하고 회전(`.quaternion`) 트랙만 정규화 추출.
@@ -30,7 +32,7 @@ AI로 생성한 3D 에셋(군용 트럭 등)과 외부 캐릭터 모델은 스�
 - **중력 가속 낙하 & 넉백 보정:** 위치 트랙이 제거된 피격 애니메이션(`Fall`) 재생 시 공중에 뜨는 현상을 막기 위해 Ease-Out 중력 곡선(`1 - (1 - progress)^3`)과 후방 넉백 드리프트를 결합해 바닥(`y = 0.20`)에 안착.
 
 ### 3. 공간 반응형 VFX & 렌더링 최적화
-- **공간별 환경 반응형 흙먼지 VFX:** 피격 후 지면 충돌 시점(`progress >= 0.35`)에 방사형 빌보드 먼지 파티클을 생성하되, 적의 월드 Z 좌표를 판별해 실내 콘크리트 창고(`z > -28`)에서는 쿨 그레이 먼지, 야외 사막(`z <= -28`)에서는 옐로 오커 모래 먼지로 자동 블렌딩. `meshStandardMaterial`을 적용해 씬 조명·안개에 자연스럽게 스며들고 Bloom 과발광을 방지.
+- **공간별 환경 반응형 모래먼지 VFX:** 피격 후 지면 충돌 시점(`progress >= 0.35`)에 방사형 빌보드 먼지 파티클을 생성하되, 적의 월드 Z 좌표를 판별해 실내 콘크리트 창고(`z > -28`)에서는 쿨 그레이 먼지, 야외 사막(`z <= -28`)에서는 옐로 오커 모래 먼지로 자동 블렌딩. `meshStandardMaterial`을 적용해 씬 조명·안개에 자연스럽게 스며들고 Bloom 과발광을 방지.
 - **절차적 텍스처 (Procedural Textures):** HTML5 Canvas API로 콘크리트, 탄약 상자, 그라데이션 스카이 돔, 지면 경계 모래 데칼, 총구 화염 스프라이트를 코드로 실시간 생성해 텍스처 용량 절감.
 - **Draw Call 배칭 (`InstancedMesh`):** 다수의 탄환 궤적(Tracer)과 피격 스파크 파티클을 `InstancedMesh`로 통합 렌더링해 드로우 콜 부하 최소화.
 
