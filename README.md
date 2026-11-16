@@ -43,6 +43,9 @@ AI로 생성한 3D 에셋(군용 트럭 등)과 외부 캐릭터 모델은 스�
 - **3-Tier Typography Hierarchy:** 디스플레이 타이틀(`Orbitron`), 전술 액션/무기명(`Rajdhani`), 텔레메트리 및 `tabular-nums` 탄약 수치(`JetBrains Mono`)로 정보 위계 분리.
 - **내장형 TA 실시간 디버거 (`F3` Toggle):** 게임 실행 중 `F3` 키를 눌러 4종 GLB 에셋 로드 상태, 스켈레톤 메시/본 카운트, 실시간 월드 좌표, 애니메이션 스테이트(`idle` / `shoot` / `fall`)를 즉시 검증 가능.
 
+<img width="1864" height="960" alt="tacticalbreach" src="https://github.com/user-attachments/assets/4d18534c-741d-426d-b62a-1a7640570367" />
+
+
 ---
 
 ## Spatial Level Architecture (Indoor-to-Outdoor Vertical Slice)
