@@ -2041,6 +2041,7 @@ function AnimatedSoldierModel({
   hitAnim,
   alive,
   currentAnim,
+  isManualOverride = false,
   initialYaw = 0,
   onDebugReport,
   onEnemyFire,
@@ -2048,12 +2049,14 @@ function AnimatedSoldierModel({
   hitAnim: number;
   alive: boolean;
   currentAnim: 'idle' | 'shoot' | 'fall';
+  isManualOverride?: boolean;
   initialYaw?: number;
   onDebugReport?: (info: Partial<SoldierDebugInfo>) => void;
   onEnemyFire?: (muzzleWorldPos: THREE.Vector3, aimWorldDir: THREE.Vector3) => void;
 }) {
   const {camera} = useThree();
   const [modelGroup, setModelGroup] = useState<THREE.Group | null>(null);
+  const statsRef = useRef<{meshBoneCount: string; finalHeight: string} | null>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const actionsRef = useRef<{
     idle?: THREE.AnimationAction;
@@ -2159,7 +2162,7 @@ function AnimatedSoldierModel({
           n.castShadow = true;
           n.receiveShadow = true;
 
-          // 1. Preserve original embedded textures & render solidly
+          // 1. Preserve original embedded textures & render solidly with independent cloned materials per instance
           const inspectAndPreserveMaterial = (origMat: any) => {
             if (!origMat) {
               return new THREE.MeshStandardMaterial({
@@ -2172,16 +2175,17 @@ function AnimatedSoldierModel({
               });
             }
 
-            origMat.transparent = false;
-            origMat.opacity = 1.0;
-            origMat.alphaTest = 0;
-            if (origMat.color) {
-              origMat.color.setHex(0xffffff);
+            const clonedMat = origMat.clone();
+            clonedMat.transparent = false;
+            clonedMat.opacity = 1.0;
+            clonedMat.alphaTest = 0;
+            if (clonedMat.color) {
+              clonedMat.color.setHex(0xffffff);
             }
-            origMat.side = THREE.DoubleSide;
-            origMat.depthWrite = true;
-            origMat.needsUpdate = true;
-            return origMat;
+            clonedMat.side = THREE.DoubleSide;
+            clonedMat.depthWrite = true;
+            clonedMat.needsUpdate = true;
+            return clonedMat;
           };
 
           if (Array.isArray(n.material)) {
@@ -2203,10 +2207,12 @@ function AnimatedSoldierModel({
       const finalBox = new THREE.Box3().setFromObject(soldierClone);
       const finalH = finalBox.max.y - finalBox.min.y;
 
-      onDebugReport?.({
+      statsRef.current = {
         meshBoneCount: `${meshCount} meshes / ${boneCount} bones`,
         finalHeight: `${finalH.toFixed(2)}m`,
-      });
+      };
+
+      onDebugReport?.(statsRef.current);
 
       // Find both right hand and left support hand bones
       const {rightHand, leftHand} = findSoldierHandBones(soldierClone);
@@ -2254,11 +2260,15 @@ function AnimatedSoldierModel({
       mixerRef.current = mixer;
       actionsRef.current = actions;
 
-      // Start in Alert Guard stance (holding ready aim pose before firing)
-      const defaultAction = actions.idle || actions.shoot;
+      // Initialize animation matching currentAnim
+      const defaultAction = actions[currentAnim] || actions.idle || actions.shoot;
       if (defaultAction) {
+        if (currentAnim === 'fall') {
+          defaultAction.setLoop(THREE.LoopOnce, 1);
+          defaultAction.clampWhenFinished = true;
+        }
         defaultAction.reset().play();
-        activeAnimRef.current = 'idle';
+        activeAnimRef.current = currentAnim;
       }
 
       const rootWrapper = new THREE.Group();
@@ -2295,7 +2305,7 @@ function AnimatedSoldierModel({
     const finalLyingY = floorY + 0.20;
 
     if (soldierRootRef.current && rootWrapperRef.current) {
-      if (!alive || currentAnim === 'fall') {
+      if (currentAnim === 'fall') {
         const fallAction = actionsRef.current.fall;
         let progress = 1.0;
         if (fallAction) {
@@ -2430,108 +2440,110 @@ function AnimatedSoldierModel({
           );
           rootWrapperRef.current.rotation.y = currentFacingYawRef.current;
 
-          // Guard -> Burst state machine:
-          burstTimerRef.current += dt;
-          if (!isBurstFiringRef.current) {
-            // Calm Guard/Aiming pause (1.5s pause between bursts)
-            if (burstTimerRef.current >= 1.5) {
-              burstTimerRef.current = 0;
-              isBurstFiringRef.current = true;
-              burstShotCountRef.current = 0;
-              nextShotTimeRef.current = 0; // Trigger first shot immediately
+          // Guard -> Burst state machine (bypassed if manual TEST ANIM is active):
+          if (!isManualOverride) {
+            burstTimerRef.current += dt;
+            if (!isBurstFiringRef.current) {
+              // Calm Guard/Aiming pause (1.5s pause between bursts)
+              if (burstTimerRef.current >= 1.5) {
+                burstTimerRef.current = 0;
+                isBurstFiringRef.current = true;
+                burstShotCountRef.current = 0;
+                nextShotTimeRef.current = 0; // Trigger first shot immediately
 
-              // Start short 2-3 shot firing burst
-              const actions = actionsRef.current;
-              if (actions?.shoot) {
-                actions.idle?.fadeOut(0.15);
-                actions.shoot.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.15).play();
-                activeAnimRef.current = 'shoot';
+                // Start short 2-3 shot firing burst
+                const actions = actionsRef.current;
+                if (actions?.shoot) {
+                  actions.idle?.fadeOut(0.15);
+                  actions.shoot.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.15).play();
+                  activeAnimRef.current = 'shoot';
+                }
               }
-            }
-          } else {
-            // Synced 2-3 shots during the ~0.55s burst window
-            if (burstTimerRef.current >= nextShotTimeRef.current && burstShotCountRef.current < 3) {
-              burstShotCountRef.current++;
-              // Interval between shots in the 2-3 shot burst: ~0.16s
-              nextShotTimeRef.current = burstTimerRef.current + 0.16;
+            } else {
+              // Synced 2-3 shots during the ~0.55s burst window
+              if (burstTimerRef.current >= nextShotTimeRef.current && burstShotCountRef.current < 3) {
+                burstShotCountRef.current++;
+                // Interval between shots in the 2-3 shot burst: ~0.16s
+                nextShotTimeRef.current = burstTimerRef.current + 0.16;
 
-              // Trigger Muzzle Flash VFX
-              flashTimerRef.current = 0.028; // ~28ms duration
-              smokeTimerRef.current = 0.25; // 0.25s smoke puff expansion and fade
-              if (flashGroupRef.current) {
-                flashGroupRef.current.visible = true;
-                flashGroupRef.current.rotation.z = Math.random() * Math.PI * 2;
-                const sc = 0.8 + Math.random() * 0.4;
-                flashGroupRef.current.scale.set(sc, sc, sc);
-              }
-              if (flashLightRef.current) {
-                flashLightRef.current.visible = true;
-              }
-
-              // Fire tracer towards player's camera position with slight spread
-              if (rightHandBoneRef.current && leftHandBoneRef.current) {
-                const rightHand = rightHandBoneRef.current;
-                const leftHand = leftHandBoneRef.current;
-                rightHand.updateWorldMatrix(true, false);
-                leftHand.updateWorldMatrix(true, false);
-                rightHand.getWorldPosition(vHandRScratch);
-                leftHand.getWorldPosition(vHandLScratch);
-
-                vSoldierAimDirScratch.subVectors(vHandLScratch, vHandRScratch).normalize();
-                vMuzzlePosScratch.copy(vHandLScratch)
-                  .addScaledVector(vSoldierAimDirScratch, 0.38)
-                  .add({x: 0, y: 0.14, z: 0});
-
-                if (flashGroupRef.current && flashGroupRef.current.parent) {
-                  flashGroupRef.current.position.copy(vMuzzlePosScratch);
-                  flashGroupRef.current.parent.worldToLocal(flashGroupRef.current.position);
+                // Trigger Muzzle Flash VFX
+                flashTimerRef.current = 0.028; // ~28ms duration
+                smokeTimerRef.current = 0.25; // 0.25s smoke puff expansion and fade
+                if (flashGroupRef.current) {
+                  flashGroupRef.current.visible = true;
+                  flashGroupRef.current.rotation.z = Math.random() * Math.PI * 2;
+                  const sc = 0.8 + Math.random() * 0.4;
+                  flashGroupRef.current.scale.set(sc, sc, sc);
+                }
+                if (flashLightRef.current) {
+                  flashLightRef.current.visible = true;
                 }
 
-                // Lead/aim toward camera position with realistic combat dispersion
-                vTargetPosScratch.set(
-                  camera.position.x + (Math.random() - 0.5) * 1.4,
-                  camera.position.y + (Math.random() - 0.5) * 0.9,
-                  camera.position.z + (Math.random() - 0.5) * 1.4
-                );
-                vAimDirScratch.subVectors(vTargetPosScratch, vMuzzlePosScratch).normalize();
-                onEnemyFire?.(vMuzzlePosScratch, vAimDirScratch);
-              } else if (gunAttachmentRef.current) {
-                const muzzleObj = gunAttachmentRef.current.getObjectByName('muzzleAnchor');
-                const mPos = vMuzzlePosScratch;
-                if (muzzleObj) {
-                  muzzleObj.getWorldPosition(mPos);
-                } else {
-                  gunAttachmentRef.current.getWorldPosition(mPos);
-                }
+                // Fire tracer towards player's camera position with slight spread
+                if (rightHandBoneRef.current && leftHandBoneRef.current) {
+                  const rightHand = rightHandBoneRef.current;
+                  const leftHand = leftHandBoneRef.current;
+                  rightHand.updateWorldMatrix(true, false);
+                  leftHand.updateWorldMatrix(true, false);
+                  rightHand.getWorldPosition(vHandRScratch);
+                  leftHand.getWorldPosition(vHandLScratch);
 
-                if (flashGroupRef.current && flashGroupRef.current.parent) {
-                  flashGroupRef.current.position.copy(mPos);
-                  flashGroupRef.current.parent.worldToLocal(flashGroupRef.current.position);
-                }
+                  vSoldierAimDirScratch.subVectors(vHandLScratch, vHandRScratch).normalize();
+                  vMuzzlePosScratch.copy(vHandLScratch)
+                    .addScaledVector(vSoldierAimDirScratch, 0.38)
+                    .add({x: 0, y: 0.14, z: 0});
 
-                // Lead/aim toward camera position with realistic combat dispersion
-                vTargetPosScratch.set(
-                  camera.position.x + (Math.random() - 0.5) * 1.4,
-                  camera.position.y + (Math.random() - 0.5) * 0.9,
-                  camera.position.z + (Math.random() - 0.5) * 1.4
-                );
-                vAimDirScratch.subVectors(vTargetPosScratch, mPos).normalize();
-                onEnemyFire?.(mPos, vAimDirScratch);
+                  if (flashGroupRef.current && flashGroupRef.current.parent) {
+                    flashGroupRef.current.position.copy(vMuzzlePosScratch);
+                    flashGroupRef.current.parent.worldToLocal(flashGroupRef.current.position);
+                  }
+
+                  // Lead/aim toward camera position with realistic combat dispersion
+                  vTargetPosScratch.set(
+                    camera.position.x + (Math.random() - 0.5) * 1.4,
+                    camera.position.y + (Math.random() - 0.5) * 0.9,
+                    camera.position.z + (Math.random() - 0.5) * 1.4
+                  );
+                  vAimDirScratch.subVectors(vTargetPosScratch, vMuzzlePosScratch).normalize();
+                  onEnemyFire?.(vMuzzlePosScratch, vAimDirScratch);
+                } else if (gunAttachmentRef.current) {
+                  const muzzleObj = gunAttachmentRef.current.getObjectByName('muzzleAnchor');
+                  const mPos = vMuzzlePosScratch;
+                  if (muzzleObj) {
+                    muzzleObj.getWorldPosition(mPos);
+                  } else {
+                    gunAttachmentRef.current.getWorldPosition(mPos);
+                  }
+
+                  if (flashGroupRef.current && flashGroupRef.current.parent) {
+                    flashGroupRef.current.position.copy(mPos);
+                    flashGroupRef.current.parent.worldToLocal(flashGroupRef.current.position);
+                  }
+
+                  // Lead/aim toward camera position with realistic combat dispersion
+                  vTargetPosScratch.set(
+                    camera.position.x + (Math.random() - 0.5) * 1.4,
+                    camera.position.y + (Math.random() - 0.5) * 0.9,
+                    camera.position.z + (Math.random() - 0.5) * 1.4
+                  );
+                  vAimDirScratch.subVectors(vTargetPosScratch, mPos).normalize();
+                  onEnemyFire?.(mPos, vAimDirScratch);
+                }
               }
-            }
 
-            // Active firing burst lasting ~0.55s (approx 2-3 shots)
-            if (burstTimerRef.current >= 0.55) {
-              burstTimerRef.current = 0;
-              isBurstFiringRef.current = false;
-              // Pause firing and hold ready combat aim pose
-              const actions = actionsRef.current;
-              if (actions?.idle) {
-                actions.shoot?.fadeOut(0.15);
-                actions.idle.reset().setLoop(THREE.LoopOnce, 1);
-                actions.idle.clampWhenFinished = true;
-                actions.idle.fadeIn(0.15).play();
-                activeAnimRef.current = 'idle';
+              // Active firing burst lasting ~0.55s (approx 2-3 shots)
+              if (burstTimerRef.current >= 0.55) {
+                burstTimerRef.current = 0;
+                isBurstFiringRef.current = false;
+                // Pause firing and hold ready combat aim pose
+                const actions = actionsRef.current;
+                if (actions?.idle) {
+                  actions.shoot?.fadeOut(0.15);
+                  actions.idle.reset().setLoop(THREE.LoopOnce, 1);
+                  actions.idle.clampWhenFinished = true;
+                  actions.idle.fadeIn(0.15).play();
+                  activeAnimRef.current = 'idle';
+                }
               }
             }
           }
@@ -2673,6 +2685,7 @@ function AnimatedSoldierModel({
         worldPos: `[${vTargetPosScratch.x.toFixed(1)}, ${vTargetPosScratch.y.toFixed(2)}, ${vTargetPosScratch.z.toFixed(1)}]`,
         scale: `[${vMuzzlePosScratch.x.toFixed(2)}, ${vMuzzlePosScratch.y.toFixed(2)}, ${vMuzzlePosScratch.z.toFixed(2)}]`,
         activeAnim: activeAnimRef.current,
+        ...(statsRef.current || {}),
       });
     }
   });
@@ -2872,8 +2885,35 @@ function TacticalTarget({
   onDebugReport?: (info: Partial<SoldierDebugInfo>) => void;
   onEnemyFire?: (muzzleWorldPos: THREE.Vector3, aimWorldDir: THREE.Vector3) => void;
 }) {
-  // Default to 'shoot' combat aiming pose instead of static T-pose
-  const activeAnim: 'idle' | 'shoot' | 'fall' = !target.alive ? 'fall' : (testAnim === 'idle' ? 'shoot' : testAnim);
+  const prevTestAnimRef = useRef(testAnim);
+  const prevAliveRef = useRef(target.alive);
+  const [manualOverrideAnim, setManualOverrideAnim] = useState<'idle' | 'shoot' | 'fall' | null>(null);
+
+  // Detect when user clicks a button in the TEST ANIM debug panel
+  useEffect(() => {
+    if (prevTestAnimRef.current !== testAnim) {
+      setManualOverrideAnim(testAnim);
+      prevTestAnimRef.current = testAnim;
+    }
+  }, [testAnim]);
+
+  // When enemy is defeated in combat, reset manual override so he falls and stays down permanently
+  useEffect(() => {
+    if (prevAliveRef.current && !target.alive) {
+      setManualOverrideAnim(null);
+    }
+    prevAliveRef.current = target.alive;
+  }, [target.alive]);
+
+  // Active animation selection:
+  // 1. If manually overridden via TEST ANIM buttons, honor it (even if !target.alive)
+  // 2. Otherwise: if defeated, stay in 'fall'; if alive, default to testAnim
+  const activeAnim: 'idle' | 'shoot' | 'fall' =
+    manualOverrideAnim !== null
+      ? manualOverrideAnim
+      : (!target.alive ? 'fall' : testAnim);
+
+  const isManualOverride = manualOverrideAnim !== null;
 
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.1);
@@ -2881,9 +2921,6 @@ function TacticalTarget({
       target.hitAnim = Math.max(0, target.hitAnim - dt * 4);
     }
   });
-
-  // 2. Keep Defeated Soldiers Down Permanently:
-  // Once a soldier's hp <= 0 (target.alive = false), he plays Fall once and stays lying on the floor permanently without respawning.
 
   return (
     <group
@@ -2895,8 +2932,9 @@ function TacticalTarget({
           hitAnim={target.hitAnim}
           alive={target.alive}
           currentAnim={activeAnim}
+          isManualOverride={isManualOverride}
           initialYaw={target.initialYaw ?? 0}
-          onDebugReport={target.id === 1 ? onDebugReport : undefined}
+          onDebugReport={onDebugReport}
           onEnemyFire={onEnemyFire}
         />
       </GLTFErrorBoundary>
@@ -2927,6 +2965,7 @@ function FPSScene({
 
   const cameraEuler = useRef(new THREE.Euler(0, 0, 0, 'YXZ'));
   const isPointerLocked = useRef(false);
+  const [trackedTargetId, setTrackedTargetId] = useState(1);
 
   const recoilRef = useRef({time: 0, amount: 0});
   const muzzleFlashRef = useRef(false);
@@ -3066,7 +3105,11 @@ function FPSScene({
     raycaster.set(vRayOrigin, vRayDir);
     raycaster.far = 120;
 
-    let hitTarget = false;
+    let closestHit: {
+      target: TargetData;
+      distance: number;
+      point: THREE.Vector3;
+    } | null = null;
 
     for (const target of targetsRef.current) {
       if (!target.alive) continue;
@@ -3076,41 +3119,49 @@ function FPSScene({
       const intersects = raycaster.intersectObjects(group.children, true);
       if (intersects.length > 0) {
         const hit = intersects[0];
-        hitTarget = true;
-        target.hp -= 1;
-        target.hitAnim = 1.0;
-        triggerHitMarker();
-        gameAudio.playShieldBlock();
-
-        for (let i = 0; i < 8; i++) {
-          vSparksVelScratch.set(
-            (Math.random() - 0.5) * 4,
-            Math.random() * 3 + 1,
-            (Math.random() - 0.5) * 4
-          );
-          sparksRef.current.push({
-            pos: hit.point.clone(),
-            vel: vSparksVelScratch.clone(),
-            life: 0.35,
-            maxLife: 0.35,
-          });
+        if (!closestHit || hit.distance < closestHit.distance) {
+          closestHit = {
+            target,
+            distance: hit.distance,
+            point: hit.point.clone(),
+          };
         }
-
-        if (target.hp <= 0) {
-          target.alive = false;
-          gameAudio.playMeleePunch();
-          setGameState((prev) => ({...prev, score: prev.score + 100}));
-
-          const allDead = targetsRef.current.every((t) => !t.alive);
-          if (allDead) {
-            setGameState((prev) => ({...prev, status: 'VICTORY'}));
-          }
-        }
-        break;
       }
     }
 
-    if (!hitTarget) {
+    if (closestHit) {
+      const {target, point} = closestHit;
+      setTrackedTargetId(target.id);
+      target.hp -= 1;
+      target.hitAnim = 1.0;
+      triggerHitMarker();
+      gameAudio.playShieldBlock();
+
+      for (let i = 0; i < 8; i++) {
+        vSparksVelScratch.set(
+          (Math.random() - 0.5) * 4,
+          Math.random() * 3 + 1,
+          (Math.random() - 0.5) * 4
+        );
+        sparksRef.current.push({
+          pos: point.clone(),
+          vel: vSparksVelScratch.clone(),
+          life: 0.35,
+          maxLife: 0.35,
+        });
+      }
+
+      if (target.hp <= 0) {
+        target.alive = false;
+        gameAudio.playMeleePunch();
+        setGameState((prev) => ({...prev, score: prev.score + 100}));
+
+        const allDead = targetsRef.current.every((t) => !t.alive);
+        if (allDead) {
+          setGameState((prev) => ({...prev, status: 'VICTORY'}));
+        }
+      }
+    } else {
       setTimeout(() => {
         setAmmo((curr) => {
           if (curr.mag <= 0 && curr.reserve <= 0) {
@@ -3437,7 +3488,7 @@ function FPSScene({
 
       <OutdoorSkyDome />
 
-      {/* Targets with debug report for Target 1 */}
+      {/* Targets with dynamic debug tracking (tracks most recently hit target, defaults to Target 1) */}
       {targetsRef.current.map((tgt) => (
         <TacticalTarget
           key={tgt.id}
@@ -3446,7 +3497,7 @@ function FPSScene({
             if (el) targetGroupMap.current.set(tgt.id, el);
           }}
           testAnim={testAnim}
-          onDebugReport={tgt.id === 1 ? onUpdateDebug : undefined}
+          onDebugReport={tgt.id === trackedTargetId ? onUpdateDebug : undefined}
           onEnemyFire={handleEnemyFire}
         />
       ))}
